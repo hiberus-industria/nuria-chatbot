@@ -1,3 +1,23 @@
+/* Importar Gotham */
+@font-face {
+  font-family: 'Gotham';
+  src: url('/fonts/gotham_book.otf') format('opentype');
+  font-weight: 400;
+}
+
+@font-face {
+  font-family: 'Gotham';
+  src: url('/fonts/gotham_medium.otf') format('opentype');
+  font-weight: 500;
+}
+
+@font-face {
+  font-family: 'Gotham';
+  src: url('/fonts/gotham_bold.otf') format('opentype');
+  font-weight: 700;
+}
+
+/* Estructura base */
 * {
   box-sizing: border-box;
 }
@@ -12,6 +32,7 @@ body {
 html {
   background: #f2f2f2;
   font-family:
+    'Gotham',
     'Segoe UI',
     'Segoe UI Web (West European)',
     'Segoe UI',
