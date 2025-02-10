@@ -72,6 +72,10 @@ async def index():
 async def favicon():
     return await bp.send_static_file("favicon.ico")
 
+@bp.route("/fonts/<path:path>")
+async def fonts(path):
+    return await send_from_directory("static/fonts", path)
+
 
 @bp.route("/assets/<path:path>")
 async def assets(path):
