@@ -91,24 +91,6 @@ def format_non_streaming_response(chatCompletion, history_metadata, apim_request
     if len(chatCompletion.choices) > 0:
         message = chatCompletion.choices[0].message
         if message:
-            response_text = message.content
-            # Search for a JSON block containing a ticket
-            json_match = re.search(r'\{.*"ticket":.*\}', response_text, re.DOTALL)
-            action = None
-            ticket_data = None
-
-            if json_match:
-                try:
-                    parsed_json = json.loads(json_match.group())
-                    # Validate that it's a ticket with required fields
-                    if "ticket" in parsed_json and "items" in parsed_json["ticket"] and "total_price" in parsed_json["ticket"]:
-                        action = "generate_ticket"
-                        ticket_data = parsed_json["ticket"]
-                except json.JSONDecodeError:
-                    # Ignore invalid JSON
-                    pass
-
-            # Add context if present
             if hasattr(message, "context"):
                 response_obj["choices"][0]["messages"].append(
                     {
@@ -116,13 +98,10 @@ def format_non_streaming_response(chatCompletion, history_metadata, apim_request
                         "content": json.dumps(message.context),
                     }
                 )
-            # Add the assistant message with action and data if a ticket is found
             response_obj["choices"][0]["messages"].append(
                 {
                     "role": "assistant",
-                    "content": response_text,
-                    "action": action,
-                    "data": ticket_data
+                    "content": message.content,
                 }
             )
             return response_obj
@@ -156,15 +135,31 @@ def format_stream_response(chatCompletionChunk, history_metadata, apim_request_i
                 return response_obj
             else:
                 if delta.content:
+                    response_text = delta.content
+                    # Check for a complete ticket JSON in the chunk
+                    json_match = re.search(r'\{.*"ticket":.*\}', response_text, re.DOTALL)
+                    action = None
+                    ticket_data = None
+
+                    if json_match:
+                        try:
+                            parsed_json = json.loads(json_match.group())
+                            if "ticket" in parsed_json and "items" in parsed_json["ticket"] and "total_price" in parsed_json["ticket"]:
+                                action = "generate_ticket"
+                                ticket_data = parsed_json["ticket"]
+                        except json.JSONDecodeError:
+                            pass
+
                     messageObj = {
                         "role": "assistant",
-                        "content": delta.content,
+                        "content": response_text,
+                        "action": action,
+                        "data": ticket_data
                     }
                     response_obj["choices"][0]["messages"].append(messageObj)
                     return response_obj
 
     return {}
-
 
 def format_pf_non_streaming_response(
     chatCompletion, history_metadata, response_field_name, citations_field_name, message_uuid=None
