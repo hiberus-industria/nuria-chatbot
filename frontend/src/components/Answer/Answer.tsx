@@ -282,7 +282,8 @@ export const Answer = ({ answer, onCitationClicked, onExectResultClicked }: Prop
                   onClick={() => handleGeneratePDF(answer.data)}
                   styles={{
                     root: {
-                      marginTop: '10px',
+                      marginLeft: '11px',
+                      marginBottom: '11px',
                       backgroundColor: '#007bff',
                       color: 'white'
                     },
