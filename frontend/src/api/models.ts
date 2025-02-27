@@ -45,6 +45,8 @@ export type ChatMessage = {
   date: string
   feedback?: Feedback
   context?: string
+  action?: string
+  data?: any
 }
 
 export type ExecResults = {
