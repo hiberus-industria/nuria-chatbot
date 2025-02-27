@@ -108,11 +108,13 @@ def format_non_streaming_response(chatCompletion, history_metadata, apim_request
 
     return {}
 
-# Buffer to accumulate streaming content
+# Buffer and ticket metadata persist across chunks
 _response_buffer = ""
+_ticket_action = None
+_ticket_data = None
 
 def format_stream_response(chatCompletionChunk, history_metadata, apim_request_id):
-    global _response_buffer
+    global _response_buffer, _ticket_action, _ticket_data
 
     response_obj = {
         "id": chatCompletionChunk.id,
@@ -125,7 +127,8 @@ def format_stream_response(chatCompletionChunk, history_metadata, apim_request_i
     }
 
     if len(chatCompletionChunk.choices) > 0:
-        delta = chatCompletionChunk.choices[0].delta
+        choice = chatCompletionChunk.choices[0]  # Access the Choice object
+        delta = choice.delta  # Access the Delta within Choice
         if delta:
             if hasattr(delta, "context"):
                 messageObj = {"role": "tool", "content": json.dumps(delta.context)}
@@ -140,34 +143,36 @@ def format_stream_response(chatCompletionChunk, history_metadata, apim_request_i
                 return response_obj
             else:
                 if delta.content:
-                    # Append the chunk content to the buffer
                     _response_buffer += delta.content
 
-                    # Check if the buffer contains a complete ticket JSON
-                    json_match = re.search(r'\{.*"ticket":.*\}', _response_buffer, re.DOTALL)
-                    action = None
-                    ticket_data = None
-
-                    if json_match:
-                        print(f"Ticket detected: {json_match.group()}, Action: {action}, Data: {ticket_data}")
-
-                        try:
-                            parsed_json = json.loads(json_match.group())
-                            if "ticket" in parsed_json and "items" in parsed_json["ticket"] and "total_price" in parsed_json["ticket"]:
-                                action = "generate_ticket"
-                                ticket_data = parsed_json["ticket"]
-                                # Clear buffer after detecting ticket
-                                _response_buffer = ""
-                        except json.JSONDecodeError:
-                            pass
+                    # Check for a complete ticket JSON if not already detected
+                    if not _ticket_action:  # Only detect once
+                        json_match = re.search(r'\{.*"ticket":.*\}', _response_buffer, re.DOTALL)
+                        if json_match:
+                            try:
+                                parsed_json = json.loads(json_match.group())
+                                if "ticket" in parsed_json and "items" in parsed_json["ticket"] and "total_price" in parsed_json["ticket"]:
+                                    _ticket_action = "generate_ticket"
+                                    _ticket_data = parsed_json["ticket"]
+                                    print(f"Ticket detected: {json_match.group()}, Action: {_ticket_action}, Data: {_ticket_data}")
+                            except json.JSONDecodeError as e:
+                                print(f"JSONDecodeError: {e}, Buffer: {_response_buffer}")
 
                     messageObj = {
                         "role": "assistant",
                         "content": delta.content,
-                        "action": action,
-                        "data": ticket_data
+                        "action": _ticket_action,
+                        "data": _ticket_data
                     }
                     response_obj["choices"][0]["messages"].append(messageObj)
+
+                    # Reset buffer and metadata at the end of the stream
+                    if choice.finish_reason == "stop":  # Use choice.finish_reason, not delta.finish_reason
+                        _response_buffer = ""
+                        _ticket_action = None
+                        _ticket_data = None
+                        print("Stream ended, buffer and metadata reset")
+
                     return response_obj
 
     return {}
