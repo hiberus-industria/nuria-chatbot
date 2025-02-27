@@ -38,7 +38,6 @@ import { QuestionInput } from '../../components/QuestionInput'
 import { ChatHistoryPanel } from '../../components/ChatHistory/ChatHistoryPanel'
 import { AppStateContext } from '../../state/AppProvider'
 import { useBoolean } from '@fluentui/react-hooks'
-import jsPDF from 'jspdf'
 
 const enum messageStatus {
   NotRunning = 'Not Running',
@@ -83,10 +82,6 @@ const Chat = () => {
 
   const [ASSISTANT, TOOL, ERROR] = ['assistant', 'tool', 'error']
   const NO_CONTENT_ERROR = 'No content in messages object.'
-
-  useEffect(() => {
-    console.log('Messages:', messages)
-  }, [messages])
 
   useEffect(() => {
     if (
@@ -781,17 +776,6 @@ const Chat = () => {
     )
   }
 
-  const handleGeneratePDF = (ticketData: any) => {
-    const doc = new jsPDF()
-    doc.text('Ticket de Compra', 10, 10)
-    doc.text('Items:', 10, 20)
-    ticketData.items.forEach((item: any, index: number) => {
-      doc.text(`${index + 1}. ${item.description} - ${item.price} ${ticketData.currency || 'USD'}`, 10, 30 + index * 10)
-    })
-    doc.text(`Total: ${ticketData.total_price} ${ticketData.currency || 'USD'}`, 10, 30 + ticketData.items.length * 10)
-    doc.save('ticket.pdf')
-  }
-
   return (
     <div className={styles.container} role="main">
       {showAuthMessage ? (
@@ -861,27 +845,13 @@ const Chat = () => {
                               generated_chart: parsePlotFromMessage(messages[index - 1]),
                               message_id: answer.id,
                               feedback: answer.feedback,
-                              exec_results: execResults
+                              exec_results: execResults,
+                              action: answer.action,
+                              data: answer.data
                             }}
                             onCitationClicked={c => onShowCitation(c)}
                             onExectResultClicked={() => onShowExecResult(answerId)}
                           />
-                        )}
-                        {/* Add button for ticket generation */}
-                        {answer.action === 'generate_ticket' && (
-                          <button
-                            onClick={() => handleGeneratePDF(answer.data)}
-                            style={{
-                              marginTop: '10px',
-                              padding: '5px 10px',
-                              backgroundColor: '#007bff',
-                              color: 'white',
-                              border: 'none',
-                              borderRadius: '5px',
-                              cursor: 'pointer'
-                            }}>
-                            Tramitar compra
-                          </button>
                         )}
                       </div>
                     ) : answer.role === ERROR ? (
