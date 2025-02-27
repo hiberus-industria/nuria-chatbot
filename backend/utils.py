@@ -3,6 +3,8 @@ import json
 import logging
 import requests
 import dataclasses
+import re
+import json
 
 from typing import List
 
@@ -89,6 +91,24 @@ def format_non_streaming_response(chatCompletion, history_metadata, apim_request
     if len(chatCompletion.choices) > 0:
         message = chatCompletion.choices[0].message
         if message:
+            response_text = message.content
+            # Search for a JSON block containing a ticket
+            json_match = re.search(r'\{.*"ticket":.*\}', response_text, re.DOTALL)
+            action = None
+            ticket_data = None
+
+            if json_match:
+                try:
+                    parsed_json = json.loads(json_match.group())
+                    # Validate that it's a ticket with required fields
+                    if "ticket" in parsed_json and "items" in parsed_json["ticket"] and "total_price" in parsed_json["ticket"]:
+                        action = "generate_ticket"
+                        ticket_data = parsed_json["ticket"]
+                except json.JSONDecodeError:
+                    # Ignore invalid JSON
+                    pass
+
+            # Add context if present
             if hasattr(message, "context"):
                 response_obj["choices"][0]["messages"].append(
                     {
@@ -96,10 +116,13 @@ def format_non_streaming_response(chatCompletion, history_metadata, apim_request
                         "content": json.dumps(message.context),
                     }
                 )
+            # Add the assistant message with action and data if a ticket is found
             response_obj["choices"][0]["messages"].append(
                 {
                     "role": "assistant",
-                    "content": message.content,
+                    "content": response_text,
+                    "action": action,
+                    "data": ticket_data
                 }
             )
             return response_obj
