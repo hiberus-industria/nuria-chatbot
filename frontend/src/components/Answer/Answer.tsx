@@ -8,7 +8,8 @@ import { ThumbDislike20Filled, ThumbLike20Filled } from '@fluentui/react-icons'
 import DOMPurify from 'dompurify'
 import remarkGfm from 'remark-gfm'
 import supersub from 'remark-supersub'
-import jsPDF from 'jspdf'
+import { jsPDF } from 'jspdf'
+import { applyPlugin } from 'jspdf-autotable'
 import { AskResponse, Citation, Feedback, historyMessageFeedback } from '../../api'
 import { XSSAllowTags, XSSAllowAttributes } from '../../constants/sanatizeAllowables'
 import { AppStateContext } from '../../state/AppProvider'
@@ -22,6 +23,8 @@ interface Props {
   onCitationClicked: (citedDocument: Citation) => void
   onExectResultClicked: (answerId: string) => void
 }
+
+applyPlugin(jsPDF)
 
 export const Answer = ({ answer, onCitationClicked, onExectResultClicked }: Props) => {
   const initializeAnswerFeedback = (answer: AskResponse) => {
@@ -48,14 +51,74 @@ export const Answer = ({ answer, onCitationClicked, onExectResultClicked }: Prop
 
   // Function to generate PDF from ticket data
   const handleGeneratePDF = (ticketData: any) => {
-    const doc = new jsPDF()
-    doc.text('Ticket de Compra', 10, 10)
-    doc.text('Items:', 10, 20)
-    ticketData.items.forEach((item: any, index: number) => {
-      doc.text(`${index + 1}. ${item.description} - ${item.price} ${ticketData.currency || 'EUR'}`, 10, 30 + index * 10)
+    const doc = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4'
     })
-    doc.text(`Total: ${ticketData.total_price} ${ticketData.currency || 'EUR'}`, 10, 30 + ticketData.items.length * 10)
-    doc.save('ticket.pdf')
+
+    const orderNumber = 'OC-' + Math.floor(10000 + Math.random() * 90000)
+    const currentDate = new Date().toLocaleDateString('es-ES', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    })
+    const formatCurrency = (amount: number) =>
+      new Intl.NumberFormat('es-ES', {
+        style: 'currency',
+        currency: ticketData.currency || 'EUR',
+        minimumFractionDigits: 2
+      }).format(amount)
+
+    // --- Minimalistic Header ---
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(16)
+    doc.text('Orden de Compra', 10, 15)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(10)
+    doc.text(`Nº: ${orderNumber}`, 10, 22)
+    doc.text(`Fecha: ${currentDate}`, 10, 27)
+    doc.setLineWidth(0.5)
+    doc.line(10, 30, 200, 30) // Simple horizontal line
+
+    // --- Table ---
+    const tableData = ticketData.items.map((item: any, index: number) => [
+      (index + 1).toString(),
+      item.sku,
+      `${item.subcategory}\n${item.description}`,
+      item.category,
+      item.color,
+      formatCurrency(item.price)
+    ])
+    doc.autoTable({
+      startY: 35, // Start just below the header
+      head: [['Línea', 'SKU', 'Descripción', 'Categoría', 'Color', 'Precio']],
+      body: tableData,
+      styles: {
+        fontSize: 8,
+        cellPadding: 1.5,
+        overflow: 'linebreak',
+        lineWidth: 0.1,
+        lineColor: [200, 200, 200] // Light gray borders
+      },
+      headStyles: {
+        fillColor: [240, 240, 240], // Very light gray
+        textColor: [50, 50, 50], // Dark gray text
+        fontStyle: 'bold'
+      },
+      columnStyles: {
+        0: { cellWidth: 10 },
+        1: { cellWidth: 20 },
+        2: { cellWidth: 65 },
+        3: { cellWidth: 25 },
+        4: { cellWidth: 20 },
+        5: { cellWidth: 20, halign: 'right' }
+      },
+      margin: { left: 10, right: 10 },
+      theme: 'grid' // Elegant grid style
+    })
+
+    doc.save(`PurchaseOrder_${orderNumber}.pdf`)
   }
 
   const handleChevronClick = () => {
