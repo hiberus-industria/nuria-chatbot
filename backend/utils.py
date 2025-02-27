@@ -108,7 +108,12 @@ def format_non_streaming_response(chatCompletion, history_metadata, apim_request
 
     return {}
 
+# Buffer to accumulate streaming content
+_response_buffer = ""
+
 def format_stream_response(chatCompletionChunk, history_metadata, apim_request_id):
+    global _response_buffer
+
     response_obj = {
         "id": chatCompletionChunk.id,
         "model": chatCompletionChunk.model,
@@ -135,24 +140,30 @@ def format_stream_response(chatCompletionChunk, history_metadata, apim_request_i
                 return response_obj
             else:
                 if delta.content:
-                    response_text = delta.content
-                    # Check for a complete ticket JSON in the chunk
-                    json_match = re.search(r'\{.*"ticket":.*\}', response_text, re.DOTALL)
+                    # Append the chunk content to the buffer
+                    _response_buffer += delta.content
+
+                    # Check if the buffer contains a complete ticket JSON
+                    json_match = re.search(r'\{.*"ticket":.*\}', _response_buffer, re.DOTALL)
                     action = None
                     ticket_data = None
 
                     if json_match:
+                        print(f"Ticket detected: {json_match.group()}, Action: {action}, Data: {ticket_data}")
+
                         try:
                             parsed_json = json.loads(json_match.group())
                             if "ticket" in parsed_json and "items" in parsed_json["ticket"] and "total_price" in parsed_json["ticket"]:
                                 action = "generate_ticket"
                                 ticket_data = parsed_json["ticket"]
+                                # Clear buffer after detecting ticket
+                                _response_buffer = ""
                         except json.JSONDecodeError:
                             pass
 
                     messageObj = {
                         "role": "assistant",
-                        "content": response_text,
+                        "content": delta.content,
                         "action": action,
                         "data": ticket_data
                     }

@@ -85,6 +85,10 @@ const Chat = () => {
   const NO_CONTENT_ERROR = 'No content in messages object.'
 
   useEffect(() => {
+    console.log('Messages:', messages)
+  }, [messages])
+
+  useEffect(() => {
     if (
       appStateContext?.state.isCosmosDBAvailable?.status !== CosmosDBStatus.Working &&
       appStateContext?.state.isCosmosDBAvailable?.status !== CosmosDBStatus.NotConfigured &&
@@ -157,8 +161,13 @@ const Chat = () => {
     if (resultMessage.role === ASSISTANT) {
       setAnswerId(resultMessage.id)
       assistantContent += resultMessage.content
-      assistantMessage = { ...assistantMessage, ...resultMessage }
-      assistantMessage.content = assistantContent
+      assistantMessage = {
+        ...assistantMessage,
+        ...resultMessage,
+        content: assistantContent,
+        action: resultMessage.action,
+        data: resultMessage.data
+      }
 
       if (resultMessage.context) {
         toolMessage = {
