@@ -97,8 +97,8 @@ export const Answer = ({ answer, onCitationClicked, onExectResultClicked }: Prop
         num: orderNumber,
         invDate: `Fecha de solicitud: ${currentDate}`,
         invGenDate: `Fecha de generación: ${currentDate}`,
-        headerBorder: true,
-        tableBodyBorder: true,
+        headerBorder: false,
+        tableBodyBorder: false,
         header: [
           { title: 'Lín.', style: { width: 10 } }, // 10 mm
           { title: 'SKU', style: { width: 25 } }, // 30 mm
