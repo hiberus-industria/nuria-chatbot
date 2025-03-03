@@ -76,6 +76,9 @@ async def favicon():
 async def fonts(path):
     return await send_from_directory("static/fonts", path)
 
+@bp.route("/images/<path:path>")
+async def images(path):
+    return await send_from_directory("static/images", path)
 
 @bp.route("/assets/<path:path>")
 async def assets(path):

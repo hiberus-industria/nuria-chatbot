@@ -8,8 +8,7 @@ import { ThumbDislike20Filled, ThumbLike20Filled } from '@fluentui/react-icons'
 import DOMPurify from 'dompurify'
 import remarkGfm from 'remark-gfm'
 import supersub from 'remark-supersub'
-import { jsPDF } from 'jspdf'
-import { applyPlugin } from 'jspdf-autotable'
+import jsPDFInvoiceTemplate, { OutputType } from './generate-pdf'
 import { AskResponse, Citation, Feedback, historyMessageFeedback } from '../../api'
 import { XSSAllowTags, XSSAllowAttributes } from '../../constants/sanatizeAllowables'
 import { AppStateContext } from '../../state/AppProvider'
@@ -23,8 +22,6 @@ interface Props {
   onCitationClicked: (citedDocument: Citation) => void
   onExectResultClicked: (answerId: string) => void
 }
-
-applyPlugin(jsPDF)
 
 export const Answer = ({ answer, onCitationClicked, onExectResultClicked }: Props) => {
   const initializeAnswerFeedback = (answer: AskResponse) => {
@@ -49,15 +46,8 @@ export const Answer = ({ answer, onCitationClicked, onExectResultClicked }: Prop
     appStateContext?.state.frontendSettings?.feedback_enabled && appStateContext?.state.isCosmosDBAvailable?.cosmosDB
   const SANITIZE_ANSWER = appStateContext?.state.frontendSettings?.sanitize_answer
 
-  // Function to generate PDF from ticket data
   const handleGeneratePDF = (ticketData: any) => {
-    const doc = new jsPDF({
-      orientation: 'portrait',
-      unit: 'mm',
-      format: 'a4'
-    })
-
-    const orderNumber = 'OC-' + Math.floor(10000 + Math.random() * 90000)
+    const orderNumber = 'oc_' + Math.floor(10000 + Math.random() * 90000)
     const currentDate = new Date().toLocaleDateString('es-ES', {
       day: '2-digit',
       month: '2-digit',
@@ -70,55 +60,95 @@ export const Answer = ({ answer, onCitationClicked, onExectResultClicked }: Prop
         minimumFractionDigits: 2
       }).format(amount)
 
-    // --- Minimalistic Header ---
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(16)
-    doc.text('Orden de Compra', 10, 15)
-    doc.setFont('helvetica', 'normal')
-    doc.setFontSize(10)
-    doc.text(`Nº: ${orderNumber}`, 10, 22)
-    doc.text(`Fecha: ${currentDate}`, 10, 27)
-    doc.setLineWidth(0.5)
-    doc.line(10, 30, 200, 30) // Simple horizontal line
+    // Calcular subtotal e impuestos (21% IVA)
+    const vatRate = 0.21
+    const totalPrice = ticketData.total_price
+    const subtotal = totalPrice / (1 + vatRate)
 
-    // --- Table ---
-    const tableData = ticketData.items.map((item: any, index: number) => [
-      (index + 1).toString(),
-      item.sku,
-      `${item.subcategory}\n${item.description}`,
-      item.category,
-      item.color,
-      formatCurrency(item.price)
-    ])
-    doc.autoTable({
-      startY: 35, // Start just below the header
-      head: [['Línea', 'SKU', 'Descripción', 'Categoría', 'Color', 'Precio']],
-      body: tableData,
-      styles: {
-        fontSize: 8,
-        cellPadding: 1.5,
-        overflow: 'linebreak',
-        lineWidth: 0.1,
-        lineColor: [200, 200, 200] // Light gray borders
+    const props = {
+      outputType: OutputType.Save,
+      returnJsPDFDocObject: false,
+      fileName: `${orderNumber}.pdf`,
+      orientationLandscape: false,
+      compress: true,
+      logo: {
+        src: '/images/logo.png',
+        width: 30, // Reduced from 53.33
+        height: 15, // Reduced from 26.66
+        margin: { top: 0, left: 0 }
       },
-      headStyles: {
-        fillColor: [240, 240, 240], // Very light gray
-        textColor: [50, 50, 50], // Dark gray text
-        fontStyle: 'bold'
+      business: {
+        name: 'Roca Sanitario, S.A.',
+        address: 'Av. Diagonal, 513, 08029 Barcelona, España',
+        phone: 'Tel: +34 933 66 12 00',
+        email: 'info.es@roca.com',
+        website: 'www.roca.com'
       },
-      columnStyles: {
-        0: { cellWidth: 10 },
-        1: { cellWidth: 20 },
-        2: { cellWidth: 65 },
-        3: { cellWidth: 25 },
-        4: { cellWidth: 20 },
-        5: { cellWidth: 20, halign: 'right' }
+      contact: {
+        label: 'Orden de compra para:',
+        name: 'Hiberus Tecnologías de la Información, S.L.',
+        address: 'Paseo Isabel la Católica, 6, 50009 Zaragoza, España',
+        phone: 'Tel: +34 976 10 66 66',
+        email: 'info@hiberus.com',
+        otherInfo: 'www.hiberus.com'
       },
-      margin: { left: 10, right: 10 },
-      theme: 'grid' // Elegant grid style
-    })
+      invoice: {
+        label: 'Orden #: ',
+        num: orderNumber,
+        invDate: `Fecha de solicitud: ${currentDate}`,
+        invGenDate: `Fecha de generación: ${currentDate}`,
+        headerBorder: true,
+        tableBodyBorder: true,
+        header: [
+          { title: 'Lín.', style: { width: 10 } }, // 10 mm
+          { title: 'SKU', style: { width: 25 } }, // 30 mm
+          { title: 'Descripción', style: { width: 60 } }, // 70 mm (reducido de 80)
+          { title: 'Categoría', style: { width: 45 } }, // 40 mm
+          { title: 'Color', style: { width: 20 } }, // 15 mm
+          { title: 'Cant.', style: { width: 10 } }, // 10 mm
+          { title: 'Precio', style: { width: 20 } } // 15 mm
+        ],
+        table: ticketData.items.map((item, index) => [
+          (index + 1).toString(),
+          item.sku || 'N/A',
+          item.description || item.subcategory || 'Sin descripción',
+          item.category || 'Sin categoría',
+          item.color || 'N/A',
+          '1',
+          formatCurrency(item.price)
+        ]),
+        additionalRows: [
+          {
+            col1: 'Subtotal:',
+            col2: formatCurrency(subtotal),
+            col3: ticketData.currency || 'EUR',
+            style: { fontSize: 10 }
+          },
+          {
+            col1: 'IVA:',
+            col2: '21',
+            col3: '%',
+            style: { fontSize: 10 }
+          },
+          {
+            col1: 'Total:',
+            col2: formatCurrency(totalPrice),
+            col3: ticketData.currency || 'EUR',
+            style: { fontSize: 14 }
+          }
+        ],
+        invDescLabel: 'Notas de la orden:',
+        invDesc: 'Orden de compra generada automáticamente. Por favor, revisar antes de confirmar.'
+      },
+      footer: {
+        text: 'Este documento es válido sin firma ni sello.'
+      },
+      pageEnable: true,
+      pageLabel: 'Página '
+    }
 
-    doc.save(`PurchaseOrder_${orderNumber}.pdf`)
+    // Generar el PDF usando la librería
+    jsPDFInvoiceTemplate(props)
   }
 
   const handleChevronClick = () => {
