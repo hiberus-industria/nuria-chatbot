@@ -16,6 +16,74 @@ AZURE_SEARCH_PERMITTED_GROUPS_COLUMN = os.environ.get(
     "AZURE_SEARCH_PERMITTED_GROUPS_COLUMN"
 )
 
+class StreamResponseFormatter:
+    def __init__(self):
+        self._response_buffer = ""
+        self._ticket_action = None
+        self._ticket_data = None
+
+    def format_stream_response(self, chatCompletionChunk, history_metadata, apim_request_id):
+        response_obj = {
+            "id": chatCompletionChunk.id,
+            "model": chatCompletionChunk.model,
+            "created": chatCompletionChunk.created,
+            "object": chatCompletionChunk.object,
+            "choices": [{"messages": []}],
+            "history_metadata": history_metadata,
+            "apim-request-id": apim_request_id,
+        }
+
+        if len(chatCompletionChunk.choices) > 0:
+            choice = chatCompletionChunk.choices[0]
+            delta = choice.delta
+
+            if delta:
+                if hasattr(delta, "context"):
+                    messageObj = {"role": "tool", "content": json.dumps(delta.context)}
+                    response_obj["choices"][0]["messages"].append(messageObj)
+                    return response_obj
+                if delta.role == "assistant" and hasattr(delta, "context"):
+                    messageObj = {"role": "assistant", "context": delta.context}
+                    response_obj["choices"][0]["messages"].append(messageObj)
+                    return response_obj
+                else:
+                    if delta.content:
+                        self._response_buffer += delta.content
+                        logging.debug(f"Buffer actualizado: {self._response_buffer}")
+
+                        if not self._ticket_action:
+                            json_match = re.search(r'\{.*"ticket":.*\}', self._response_buffer, re.DOTALL)
+                            if json_match:
+                                try:
+                                    parsed_json = json.loads(json_match.group())
+                                    if "ticket" in parsed_json and "items" in parsed_json["ticket"] and "total_price" in parsed_json["ticket"]:
+                                        self._ticket_action = "generate_ticket"
+                                        self._ticket_data = parsed_json["ticket"]
+                                        logging.debug(f"Ticket detectado: {json_match.group()}")
+                                except json.JSONDecodeError as e:
+                                    logging.debug(f"JSONDecodeError: {e}, Buffer: {self._response_buffer}")
+
+                        messageObj = {
+                            "role": "assistant",
+                            "content": delta.content,
+                            "action": self._ticket_action,
+                            "data": self._ticket_data
+                        }
+                        response_obj["choices"][0]["messages"].append(messageObj)
+
+                        if choice.finish_reason:
+                            logging.debug(f"Fin del stream con finish_reason: {choice.finish_reason}")
+                            self._response_buffer = ""
+                            self._ticket_action = None
+                            self._ticket_data = None
+
+                        return response_obj
+
+        logging.debug("Sin choices o delta, asumiendo fin del stream")
+        self._response_buffer = ""
+        self._ticket_action = None
+        self._ticket_data = None
+        return response_obj
 
 class JSONEncoder(json.JSONEncoder):
     def default(self, o):
@@ -105,75 +173,6 @@ def format_non_streaming_response(chatCompletion, history_metadata, apim_request
                 }
             )
             return response_obj
-
-    return {}
-
-# Buffer and ticket metadata persist across chunks
-_response_buffer = ""
-_ticket_action = None
-_ticket_data = None
-
-def format_stream_response(chatCompletionChunk, history_metadata, apim_request_id):
-    global _response_buffer, _ticket_action, _ticket_data
-
-    response_obj = {
-        "id": chatCompletionChunk.id,
-        "model": chatCompletionChunk.model,
-        "created": chatCompletionChunk.created,
-        "object": chatCompletionChunk.object,
-        "choices": [{"messages": []}],
-        "history_metadata": history_metadata,
-        "apim-request-id": apim_request_id,
-    }
-
-    if len(chatCompletionChunk.choices) > 0:
-        choice = chatCompletionChunk.choices[0]  # Access the Choice object
-        delta = choice.delta  # Access the Delta within Choice
-        if delta:
-            if hasattr(delta, "context"):
-                messageObj = {"role": "tool", "content": json.dumps(delta.context)}
-                response_obj["choices"][0]["messages"].append(messageObj)
-                return response_obj
-            if delta.role == "assistant" and hasattr(delta, "context"):
-                messageObj = {
-                    "role": "assistant",
-                    "context": delta.context,
-                }
-                response_obj["choices"][0]["messages"].append(messageObj)
-                return response_obj
-            else:
-                if delta.content:
-                    _response_buffer += delta.content
-
-                    # Check for a complete ticket JSON if not already detected
-                    if not _ticket_action:  # Only detect once
-                        json_match = re.search(r'\{.*"ticket":.*\}', _response_buffer, re.DOTALL)
-                        if json_match:
-                            try:
-                                parsed_json = json.loads(json_match.group())
-                                if "ticket" in parsed_json and "items" in parsed_json["ticket"] and "total_price" in parsed_json["ticket"]:
-                                    _ticket_action = "generate_ticket"
-                                    _ticket_data = parsed_json["ticket"]
-                                    print(f"Ticket detected: {json_match.group()}, Action: {_ticket_action}, Data: {_ticket_data}")
-                            except json.JSONDecodeError as e:
-                                print(f"JSONDecodeError: {e}, Buffer: {_response_buffer}")
-
-                    messageObj = {
-                        "role": "assistant",
-                        "content": delta.content,
-                        "action": _ticket_action,
-                        "data": _ticket_data
-                    }
-                    response_obj["choices"][0]["messages"].append(messageObj)
-
-                    # Reset buffer and metadata at the end of the stream
-                    if choice.finish_reason == "stop":  # Use choice.finish_reason, not delta.finish_reason
-                        _response_buffer = ""
-                        _ticket_action = None
-                        _ticket_data = None
-                        print("Stream ended, buffer and metadata reset")
-
-                    return response_obj
 
     return {}
 

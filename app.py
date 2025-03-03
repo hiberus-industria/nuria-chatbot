@@ -29,8 +29,8 @@ from backend.settings import (
     MINIMUM_SUPPORTED_AZURE_OPENAI_PREVIEW_API_VERSION
 )
 from backend.utils import (
+    StreamResponseFormatter,
     format_as_ndjson,
-    format_stream_response,
     format_non_streaming_response,
     convert_to_pf_format,
     format_pf_non_streaming_response,
@@ -380,13 +380,13 @@ async def complete_chat_request(request_body, request_headers):
 async def stream_chat_request(request_body, request_headers):
     response, apim_request_id = await send_chat_request(request_body, request_headers)
     history_metadata = request_body.get("history_metadata", {})
+    formatter = StreamResponseFormatter()  # Nueva instancia por stream
     
     async def generate():
         async for completionChunk in response:
-            yield format_stream_response(completionChunk, history_metadata, apim_request_id)
-
+            yield formatter.format_stream_response(completionChunk, history_metadata, apim_request_id)
+    
     return generate()
-
 
 async def conversation_internal(request_body, request_headers):
     try:
