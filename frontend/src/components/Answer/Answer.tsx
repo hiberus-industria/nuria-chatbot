@@ -120,7 +120,7 @@ export const Answer = ({ answer, onCitationClicked, onExectResultClicked }: Prop
         header: [
           { title: 'Image', style: { width: 20 }, type: 'image' }, // Columna de imagen
           { title: 'SKU', style: { width: 30 } },
-          { title: 'Description', style: { width: 80 } },
+          { title: 'Description', style: { width: 70 } },
           { title: 'Color', style: { width: 25 } },
           { title: 'Quant.', style: { width: 20 } },
           { title: 'Price', style: { width: 25 } }
@@ -128,7 +128,7 @@ export const Answer = ({ answer, onCitationClicked, onExectResultClicked }: Prop
         table: items.map(item => [
           item.productImage || '', // URL de la imagen
           item.sku || 'N/A',
-          [item.category, item.subcategory, item.description].filter(Boolean).join(' | ') || 'N/A',
+          item.description || 'N/A',
           item.color || 'N/A',
           item.quantity?.toString() || '1',
           formatCurrency(Number(item.unitPrice) || 0)
@@ -387,7 +387,7 @@ export const Answer = ({ answer, onCitationClicked, onExectResultClicked }: Prop
                       backgroundColor: '#0056b3'
                     }
                   }}>
-                  Tramitar compra
+                  Generate invoice
                 </DefaultButton>
               )}{' '}
             </Stack.Item>

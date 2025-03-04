@@ -16,6 +16,10 @@ AZURE_SEARCH_PERMITTED_GROUPS_COLUMN = os.environ.get(
     "AZURE_SEARCH_PERMITTED_GROUPS_COLUMN"
 )
 
+import json
+import re
+import logging
+
 class StreamResponseFormatter:
     def __init__(self):
         self._response_buffer = ""
@@ -61,8 +65,7 @@ class StreamResponseFormatter:
                                         # Caso 1: Ticket de un solo producto (products es una lista)
                                         if isinstance(parsed_json["products"], list):
                                             if len(parsed_json["products"]) > 0 and all(
-                                                "category" in item and "subcategory" in item and "sku" in item and
-                                                "description" in item and "color" in item and "material" in item and
+                                                "sku" in item and "description" in item and "color" in item and
                                                 "quantity" in item and "unitPrice" in item and "productImage" in item
                                                 for item in parsed_json["products"]
                                             ):
@@ -74,8 +77,7 @@ class StreamResponseFormatter:
                                         elif isinstance(parsed_json["products"], dict):
                                             for key, items in parsed_json["products"].items():
                                                 if isinstance(items, list) and len(items) > 0 and all(
-                                                    "category" in item and "subcategory" in item and "sku" in item and
-                                                    "description" in item and "color" in item and "material" in item and
+                                                    "sku" in item and "description" in item and "color" in item and
                                                     "quantity" in item and "unitPrice" in item and "productImage" in item
                                                     for item in items
                                                 ):
