@@ -14,6 +14,7 @@ from quart import (
     send_from_directory,
     render_template,
     current_app,
+    Response
 )
 
 from openai import AsyncAzureOpenAI
@@ -84,6 +85,32 @@ async def images(path):
 async def assets(path):
     return await send_from_directory("static/assets", path)
 
+@bp.route("/proxy/image", methods=["GET"])
+async def proxy_image():
+    image_url = request.args.get("url")
+    if not image_url:
+        return jsonify({"error": "URL parameter is required"}), 400
+
+    # Validar si es una URL válida
+    if not image_url.startswith(('http://', 'https://')):
+        logging.warning(f"URL inválida recibida: {image_url}")
+        # Devolver una imagen placeholder o un error controlado
+        return Response(b'', mimetype='image/jpeg', status=200)  # Imagen vacía como fallback
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(image_url, timeout=10.0)
+            response.raise_for_status()
+            image_content = response.content
+            content_type = response.headers.get("Content-Type", "image/jpeg")
+            return Response(image_content, mimetype=content_type)
+
+    except httpx.RequestError as e:
+        logging.error(f"Error fetching image from {image_url}: {str(e)}")
+        return jsonify({"error": "Failed to fetch image"}), 502
+    except Exception as e:
+        logging.error(f"Unexpected error in proxy_image: {str(e)}")
+        return jsonify({"error": "Internal server error"}), 500
 
 # Debug settings
 DEBUG = os.environ.get("DEBUG", "false")

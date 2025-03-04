@@ -52,14 +52,38 @@ class StreamResponseFormatter:
                         logging.debug(f"Buffer actualizado: {self._response_buffer}")
 
                         if not self._ticket_action:
-                            json_match = re.search(r'\{.*"ticket":.*\}', self._response_buffer, re.DOTALL)
+                            # Buscar un patrón JSON que contenga "products"
+                            json_match = re.search(r'\{.*"products":.*\}', self._response_buffer, re.DOTALL)
                             if json_match:
                                 try:
                                     parsed_json = json.loads(json_match.group())
-                                    if "ticket" in parsed_json and "items" in parsed_json["ticket"] and "total_price" in parsed_json["ticket"]:
-                                        self._ticket_action = "generate_ticket"
-                                        self._ticket_data = parsed_json["ticket"]
-                                        logging.debug(f"Ticket detectado: {json_match.group()}")
+                                    if "products" in parsed_json and "totalPrice" in parsed_json:
+                                        # Caso 1: Ticket de un solo producto (products es una lista)
+                                        if isinstance(parsed_json["products"], list):
+                                            if len(parsed_json["products"]) > 0 and all(
+                                                "category" in item and "subcategory" in item and "sku" in item and
+                                                "description" in item and "color" in item and "material" in item and
+                                                "quantity" in item and "unitPrice" in item and "productImage" in item
+                                                for item in parsed_json["products"]
+                                            ):
+                                                self._ticket_action = "generate_ticket"
+                                                self._ticket_data = parsed_json
+                                                logging.debug(f"Ticket de un solo producto detectado: {json_match.group()}")
+
+                                        # Caso 2: Ticket de múltiples productos (products es un objeto con claves como "bathroom1")
+                                        elif isinstance(parsed_json["products"], dict):
+                                            for key, items in parsed_json["products"].items():
+                                                if isinstance(items, list) and len(items) > 0 and all(
+                                                    "category" in item and "subcategory" in item and "sku" in item and
+                                                    "description" in item and "color" in item and "material" in item and
+                                                    "quantity" in item and "unitPrice" in item and "productImage" in item
+                                                    for item in items
+                                                ):
+                                                    self._ticket_action = "generate_ticket"
+                                                    self._ticket_data = parsed_json
+                                                    logging.debug(f"Ticket de múltiples productos detectado: {json_match.group()}")
+                                                    break
+
                                 except json.JSONDecodeError as e:
                                     logging.debug(f"JSONDecodeError: {e}, Buffer: {self._response_buffer}")
 
@@ -84,7 +108,7 @@ class StreamResponseFormatter:
         self._ticket_action = None
         self._ticket_data = None
         return response_obj
-
+    
 class JSONEncoder(json.JSONEncoder):
     def default(self, o):
         if dataclasses.is_dataclass(o):
