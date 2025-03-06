@@ -156,8 +156,13 @@ const Chat = () => {
     if (resultMessage.role === ASSISTANT) {
       setAnswerId(resultMessage.id)
       assistantContent += resultMessage.content
-      assistantMessage = { ...assistantMessage, ...resultMessage }
-      assistantMessage.content = assistantContent
+      assistantMessage = {
+        ...assistantMessage,
+        ...resultMessage,
+        content: assistantContent,
+        action: resultMessage.action,
+        data: resultMessage.data
+      }
 
       if (resultMessage.context) {
         toolMessage = {
@@ -840,7 +845,9 @@ const Chat = () => {
                               generated_chart: parsePlotFromMessage(messages[index - 1]),
                               message_id: answer.id,
                               feedback: answer.feedback,
-                              exec_results: execResults
+                              exec_results: execResults,
+                              action: answer.action,
+                              data: answer.data
                             }}
                             onCitationClicked={c => onShowCitation(c)}
                             onExectResultClicked={() => onShowExecResult(answerId)}

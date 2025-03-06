@@ -3,6 +3,8 @@ import json
 import logging
 import requests
 import dataclasses
+import re
+import json
 
 from typing import List
 
@@ -14,7 +16,101 @@ AZURE_SEARCH_PERMITTED_GROUPS_COLUMN = os.environ.get(
     "AZURE_SEARCH_PERMITTED_GROUPS_COLUMN"
 )
 
+import json
+import re
+import logging
 
+class StreamResponseFormatter:
+    def __init__(self):
+        self._response_buffer = ""
+        self._ticket_action = None
+        self._ticket_data = None
+
+    def format_stream_response(self, chatCompletionChunk, history_metadata, apim_request_id):
+        response_obj = {
+            "id": chatCompletionChunk.id,
+            "model": chatCompletionChunk.model,
+            "created": chatCompletionChunk.created,
+            "object": chatCompletionChunk.object,
+            "choices": [{"messages": []}],
+            "history_metadata": history_metadata,
+            "apim-request-id": apim_request_id,
+        }
+
+        if len(chatCompletionChunk.choices) > 0:
+            choice = chatCompletionChunk.choices[0]
+            delta = choice.delta
+
+            if delta:
+                if hasattr(delta, "context"):
+                    messageObj = {"role": "tool", "content": json.dumps(delta.context)}
+                    response_obj["choices"][0]["messages"].append(messageObj)
+                    return response_obj
+                if delta.role == "assistant" and hasattr(delta, "context"):
+                    messageObj = {"role": "assistant", "context": delta.context}
+                    response_obj["choices"][0]["messages"].append(messageObj)
+                    return response_obj
+                else:
+                    if delta.content:
+                        self._response_buffer += delta.content
+                        logging.debug(f"Buffer actualizado: {self._response_buffer}")
+
+                        if not self._ticket_action:
+                            # Buscar un patrón JSON que contenga "products"
+                            json_match = re.search(r'\{.*"products":.*\}', self._response_buffer, re.DOTALL)
+                            if json_match:
+                                try:
+                                    parsed_json = json.loads(json_match.group())
+                                    if "products" in parsed_json and "totalPrice" in parsed_json:
+                                        # Caso 1: Ticket de un solo producto (products es una lista)
+                                        if isinstance(parsed_json["products"], list):
+                                            if len(parsed_json["products"]) > 0 and all(
+                                                "sku" in item and "description" in item and "color" in item and
+                                                "quantity" in item and "unitPrice" in item and "productImage" in item
+                                                for item in parsed_json["products"]
+                                            ):
+                                                self._ticket_action = "generate_ticket"
+                                                self._ticket_data = parsed_json
+                                                logging.debug(f"Ticket de un solo producto detectado: {json_match.group()}")
+
+                                        # Caso 2: Ticket de múltiples productos (products es un objeto con claves como "bathroom1")
+                                        elif isinstance(parsed_json["products"], dict):
+                                            for key, items in parsed_json["products"].items():
+                                                if isinstance(items, list) and len(items) > 0 and all(
+                                                    "sku" in item and "description" in item and "color" in item and
+                                                    "quantity" in item and "unitPrice" in item and "productImage" in item
+                                                    for item in items
+                                                ):
+                                                    self._ticket_action = "generate_ticket"
+                                                    self._ticket_data = parsed_json
+                                                    logging.debug(f"Ticket de múltiples productos detectado: {json_match.group()}")
+                                                    break
+
+                                except json.JSONDecodeError as e:
+                                    logging.debug(f"JSONDecodeError: {e}, Buffer: {self._response_buffer}")
+
+                        messageObj = {
+                            "role": "assistant",
+                            "content": delta.content,
+                            "action": self._ticket_action,
+                            "data": self._ticket_data
+                        }
+                        response_obj["choices"][0]["messages"].append(messageObj)
+
+                        if choice.finish_reason:
+                            logging.debug(f"Fin del stream con finish_reason: {choice.finish_reason}")
+                            self._response_buffer = ""
+                            self._ticket_action = None
+                            self._ticket_data = None
+
+                        return response_obj
+
+        logging.debug("Sin choices o delta, asumiendo fin del stream")
+        self._response_buffer = ""
+        self._ticket_action = None
+        self._ticket_data = None
+        return response_obj
+    
 class JSONEncoder(json.JSONEncoder):
     def default(self, o):
         if dataclasses.is_dataclass(o):
@@ -105,43 +201,6 @@ def format_non_streaming_response(chatCompletion, history_metadata, apim_request
             return response_obj
 
     return {}
-
-def format_stream_response(chatCompletionChunk, history_metadata, apim_request_id):
-    response_obj = {
-        "id": chatCompletionChunk.id,
-        "model": chatCompletionChunk.model,
-        "created": chatCompletionChunk.created,
-        "object": chatCompletionChunk.object,
-        "choices": [{"messages": []}],
-        "history_metadata": history_metadata,
-        "apim-request-id": apim_request_id,
-    }
-
-    if len(chatCompletionChunk.choices) > 0:
-        delta = chatCompletionChunk.choices[0].delta
-        if delta:
-            if hasattr(delta, "context"):
-                messageObj = {"role": "tool", "content": json.dumps(delta.context)}
-                response_obj["choices"][0]["messages"].append(messageObj)
-                return response_obj
-            if delta.role == "assistant" and hasattr(delta, "context"):
-                messageObj = {
-                    "role": "assistant",
-                    "context": delta.context,
-                }
-                response_obj["choices"][0]["messages"].append(messageObj)
-                return response_obj
-            else:
-                if delta.content:
-                    messageObj = {
-                        "role": "assistant",
-                        "content": delta.content,
-                    }
-                    response_obj["choices"][0]["messages"].append(messageObj)
-                    return response_obj
-
-    return {}
-
 
 def format_pf_non_streaming_response(
     chatCompletion, history_metadata, response_field_name, citations_field_name, message_uuid=None
