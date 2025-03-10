@@ -29,6 +29,10 @@
   overflow-x: auto;
 }
 
+.answerText table td {
+  white-space: pre-wrap; /* Añadido para tablas */
+}
+
 .answerHeader {
   position: relative;
 }
