@@ -2,7 +2,7 @@ import { FormEvent, useContext, useEffect, useMemo, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { nord } from 'react-syntax-highlighter/dist/esm/styles/prism'
-import { Checkbox, DefaultButton, Dialog, FontIcon, Stack, Text } from '@fluentui/react'
+import { Checkbox, DefaultButton, Dialog, FontIcon, Spinner, Stack, Text } from '@fluentui/react'
 import { useBoolean } from '@fluentui/react-hooks'
 import { ThumbDislike20Filled, ThumbLike20Filled } from '@fluentui/react-icons'
 import DOMPurify from 'dompurify'
@@ -13,9 +13,10 @@ import { AskResponse, Citation, Feedback, historyMessageFeedback } from '../../a
 import { XSSAllowTags, XSSAllowAttributes } from '../../constants/sanatizeAllowables'
 import { AppStateContext } from '../../state/AppProvider'
 
-import { parseAnswer } from './AnswerParser'
+import { parseAnswer, ParsedAnswer } from './AnswerParser'
 
 import styles from './Answer.module.css'
+import rehypeRaw from 'rehype-raw'
 
 interface Props {
   answer: AskResponse
@@ -35,7 +36,8 @@ export const Answer = ({ answer, onCitationClicked, onExectResultClicked }: Prop
   const [isRefAccordionOpen, { toggle: toggleIsRefAccordionOpen }] = useBoolean(false)
   const filePathTruncationLimit = 50
 
-  const parsedAnswer = useMemo(() => parseAnswer(answer), [answer])
+  const [isJsonParsing, setIsJsonParsing] = useState(false) // Loading state for JSON block removal
+  const [parsedAnswer, setParsedAnswer] = useState<ParsedAnswer | null>(null) // Store parsed result
   const [chevronIsExpanded, setChevronIsExpanded] = useState(isRefAccordionOpen)
   const [feedbackState, setFeedbackState] = useState(initializeAnswerFeedback(answer))
   const [isFeedbackDialogOpen, setIsFeedbackDialogOpen] = useState(false)
@@ -45,6 +47,19 @@ export const Answer = ({ answer, onCitationClicked, onExectResultClicked }: Prop
   const FEEDBACK_ENABLED =
     appStateContext?.state.frontendSettings?.feedback_enabled && appStateContext?.state.isCosmosDBAvailable?.cosmosDB
   const SANITIZE_ANSWER = appStateContext?.state.frontendSettings?.sanitize_answer
+
+  // Handle async parsing with loading state for JSON block
+  useEffect(() => {
+    const parse = async () => {
+      const result = await parseAnswer(
+        answer,
+        () => setIsJsonParsing(true), // Start loading when ```json is detected
+        () => setIsJsonParsing(false) // Stop loading when ``` is closed
+      )
+      setParsedAnswer(result)
+    }
+    parse()
+  }, [answer])
 
   const handleGeneratePDF = async (ticketData: any) => {
     const orderNumber = 'os_' + Math.floor(10000 + Math.random() * 90000)
@@ -349,6 +364,9 @@ export const Answer = ({ answer, onCitationClicked, onExectResultClicked }: Prop
           {codeString}
         </SyntaxHighlighter>
       )
+    },
+    img({ node, ...props }: { node: any; [key: string]: any }) {
+      return <img {...props} alt={node.alt} style={{ maxWidth: '100%' }} />
     }
   }
   return (
@@ -357,21 +375,39 @@ export const Answer = ({ answer, onCitationClicked, onExectResultClicked }: Prop
         <Stack.Item>
           <Stack horizontal grow>
             <Stack.Item grow>
-              {parsedAnswer && (
-                <ReactMarkdown
-                  linkTarget="_blank"
-                  remarkPlugins={[remarkGfm, supersub]}
-                  children={
-                    SANITIZE_ANSWER
-                      ? DOMPurify.sanitize(parsedAnswer?.markdownFormatText, {
-                          ALLOWED_TAGS: XSSAllowTags,
-                          ALLOWED_ATTR: XSSAllowAttributes
-                        })
-                      : parsedAnswer?.markdownFormatText
-                  }
-                  className={styles.answerText}
-                  components={components}
+              {isJsonParsing ? (
+                <Spinner
+                  label="Getting ticket information..."
+                  ariaLive="assertive"
+                  labelPosition="right"
+                  styles={{
+                    root: {
+                      marginTop: '11px',
+                      marginLeft: '11px',
+                      marginBottom: '11px'
+                    }
+                  }}
                 />
+              ) : parsedAnswer ? (
+                <>
+                  <ReactMarkdown
+                    linkTarget="_blank"
+                    remarkPlugins={[remarkGfm, supersub]}
+                    rehypePlugins={[rehypeRaw]}
+                    children={
+                      SANITIZE_ANSWER
+                        ? DOMPurify.sanitize(parsedAnswer?.markdownFormatText, {
+                            ALLOWED_TAGS: XSSAllowTags,
+                            ALLOWED_ATTR: XSSAllowAttributes
+                          })
+                        : parsedAnswer?.markdownFormatText
+                    }
+                    className={styles.answerText}
+                    components={components}
+                  />
+                </>
+              ) : (
+                <Text>Parsing answer...</Text>
               )}
               {/* "Tramitar compra" button right after the response text */}
               {answer.action === 'generate_ticket' && (
