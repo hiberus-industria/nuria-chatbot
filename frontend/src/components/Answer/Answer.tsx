@@ -113,8 +113,8 @@ export const Answer = ({ answer, onCitationClicked, onExectResultClicked }: Prop
       compress: true,
       logo: {
         src: '/images/logo.png',
-        width: 30,
-        height: 15,
+        width: 50,
+        height: 10,
         margin: { top: 0, left: 0 }
       },
       contact: {
